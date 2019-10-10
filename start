@@ -1,0 +1,61 @@
+#!/bin/sh -e
+
+NAME=`pwd`
+shopt -s extglob
+NAME=${NAME%%+(/)}
+NAME=${NAME##*/}
+NAME=`printf '%s\n' "$NAME" | sed 's/\./_/g'`
+NAME=`echo $NAME | tr '[:upper:]' '[:lower:]'`
+NAME=`echo ${NAME}_app`
+
+TAG=latest
+HOST=127.0.0.57
+PORT=80
+
+
+# Проверить контейнер
+echo "Ищем контейнер ..."
+CHECK_CONTAINER=`sudo su -c "docker container ps -a | sed -n 's/.*\(${NAME}\).*/\1/p' | wc -l"`
+
+
+if [ $CHECK_CONTAINER = 0 ]
+then
+  echo "Контейнер не найден"
+else
+  echo "Останавливаем контейнер"
+  sudo su -c "docker container stop ${NAME} &> /dev/null"
+  echo "Удаляем контейнер"
+  sudo su -c "docker container rm ${NAME} &> /dev/null"
+fi
+
+# Проверить образ
+echo "Ищем образ ..."
+CHECK_IMAGE=`sudo su -c "docker images | sed -n 's/.*\(${NAME}\).*/\1/p' | wc -l"`
+
+if [ $CHECK_IMAGE = 0 ]
+then
+  echo "Образ не найден"
+else
+  echo "Удаляем образ"
+  sudo su -c "docker image rmi ${NAME}:${TAG} &> /dev/null"
+fi
+
+if [ "$1" = "stop" ]
+then
+  exit
+fi
+
+# Собрать образ
+echo ""
+echo "Собираем образ ..."
+echo "--- --- ---"
+sudo su -c "docker build -t ${NAME}:${TAG} ."
+echo "--- --- ---"
+echo ""
+
+# Запустить контейнер
+echo "Запускаем контейнер"
+sudo su -c "docker run -p ${HOST}:${PORT}:80 -v `pwd`/src:/srv/app --name=${NAME} -dit --restart unless-stopped ${NAME}:${TAG}"
+
+# Зайти в контейнер
+sudo su -c "docker exec -ti ${NAME} /bin/sh"
